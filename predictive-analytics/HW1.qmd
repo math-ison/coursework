@@ -1,0 +1,245 @@
+---
+title: "HW1"
+format: html
+author: "Madison Riba"
+date: "September 7, 2023"
+---
+
+Before working through the problems, the packages used for this assignment will be loaded.
+
+```{r load-packages}
+pacman::p_load(dplyr, ISLR2, tidyverse)
+```
+
+# Question 8
+
+## a. Loading and Calling the `college` Data Set
+
+The `Private` column will be converted to a 1/0 numeric data type for numeric analysis.
+
+```{r 8-a}
+college <- read.csv("C:/Users/radma/Downloads/College.csv", header = 1) %>%
+  rename(Name = X) %>%
+  mutate(Private = recode(Private, "Yes" = 1, "No" = 0))
+college %>% head
+```
+
+## b. Viewing the Data and Privatizing the First Column
+
+```{r 8-b}
+rownames(college) <- college[, 1]
+college <- college[, -1]
+college %>% head
+```
+
+## c.
+
+### i. Using `summary()`
+
+```{r 8-c-i}
+college %>% summary()
+```
+
+### ii. Using `pairs()`
+
+```{r 8-c-ii}
+college[, 1:10] %>% pairs()
+```
+
+### iii. Using `plot()` for Side-by-Side Boxplots of `Outstate` Vs. `Private`
+
+```{r 8-c-iii}
+boxplot(college$Outstate ~ college$Private)
+```
+
+### iv. Creating and Visualizing `Elite` Column
+
+```{r 8-c-iv}
+Elite <- rep("No", nrow(college))
+Elite[college$Top10perc > 50] <- "Yes"
+Elite <- Elite %>% as.factor()
+college <- data.frame(college, Elite)
+college$Elite %>% summary()
+plot(college$Outstate ~ college$Elite)
+```
+
+### v. Using `hist()`
+
+```{r 8-c-v}
+par(mfrow = c(2, 2))
+hist(x = college$perc.alumni,
+     breaks = 5)
+hist(x = college$Expend,
+     breaks = 10)
+hist(x = college$S.F.Ratio,
+     breaks = 15)
+hist(x = college$Books,
+     breaks = 20)
+```
+
+### vi. Further Exploration
+
+**`Acc.Rate` vs `Elite`**
+
+```{r 8-c-vi-fit1}
+college$Acc.Rate <- college$Accept/college$Apps
+
+cat("Elite Colleges' Acceptance Rates: \n",
+    "Mean: \t\t\t", mean(college$Acc.Rate[college$Elite == "Yes"]), "\n",
+    "Standard Deviation: \t", sd(college$Acc.Rate[college$Elite == "Yes"]), "\n\n")
+
+cat("Non-Elite Colleges' Acceptance Rates: \n",
+    "Mean: \t\t\t", mean(college$Acc.Rate[college$Elite == "No"]), "\n",
+    "Standard Deviation: \t", sd(college$Acc.Rate[college$Elite == "No"]))
+
+```
+
+Elite colleges have a lesser mean acceptance rate than non-elite colleges, indicating that elite colleges are more selective with their applicants. The standard deviation of their acceptance rates are also greater, with considerable overlap of acceptance rates between means.
+
+**`Room.Board` vs `Private`**
+
+```{r 8-c-vi-fit2}
+cat("Private Colleges' Room and Board: \n",
+    "Mean: \t\t\t", mean(college$Room.Board[college$Private == 1]), "\n",
+    "Standard Deviation: \t", sd(college$Room.Board[college$Private == 1]), "\n\n")
+
+cat("Non-Private Colleges' Room and Board: \n",
+    "Mean: \t\t\t", mean(college$Room.Board[college$Private == 0]), "\n",
+    "Standard Deviation: \t", sd(college$Room.Board[college$Private == 0]))
+```
+
+Private colleges have a greater average room and board cost, but also vary greater than non-private colleges.
+
+**`Top10perc` vs `Room.Board`**
+
+```{r 8-c-vi-fit3}
+fit3 <- lm(Top10perc ~ Room.Board, data = college)
+summary(fit3)
+```
+
+This is a poor model for capturing variance of `Top10perc` as the Adjusted R-squared value is < 0.15. Room and board costs are significantly linearly correlated with the percentage of new students from the top 10% of their high school class, with a p-value of <2e-16. With a $100-increase in room and board, the model estimates approximately 0.5% more top 10% students.
+
+# Question 9
+
+## Loading `Auto`
+
+```{r 9-load}
+auto <- read.csv("C:/Users/radma/Downloads/Auto.csv", header = 1)
+auto[auto == "?"] <- NA
+auto$horsepower <- auto$horsepower %>%
+  as.numeric()
+auto$origin <- auto$origin %>%
+  as.factor()
+auto <- auto %>%
+  drop_na() 
+```
+
+## a. Quantitative Vs. Qualitative Predictors
+
+```{r 9-a}
+head(auto)
+```
+
+Quantitative:
+
+-   `mpg`
+-   `cylinders`
+-   `displacement`
+-   `horsepower`
+-   `weight`
+-   `acceleration`
+-   `year`
+
+Qualitative:
+
+-   `origin`
+-   `name`
+
+## b. Ranges of Quantitative Predictors
+
+```{r 9-b}
+for (i in colnames(auto[, 1:7]))
+{
+  rnge <- eval(parse(text = paste('range(auto$', i, ')', sep = '')))
+    print(paste(i, ': ', rnge[1], '-', rnge[2]), sep = '')
+}
+
+```
+
+## c. Mean and Standard Deviation of Quantitative Predictors
+
+```{r 9-c}
+for (i in colnames(auto[, 1:7]))
+{
+  mn <- eval(parse(text = paste('mean(auto$', i, ')', sep = '')))
+    print(paste('mean of', i, ': ', mn), sep = '')
+  std <- eval(parse(text = paste('sd(auto$', i, ')', sep = '')))
+    print(paste('sd of', i, ': ', std), sep = '')
+}
+```
+
+## d. Removing Entries 10-85
+
+```{r 9-d}
+auto_manip <- auto[c(-85:-10), ]
+for (i in colnames(auto_manip[, 1:7]))
+{
+  mn <- eval(parse(text = paste('mean(auto$', i, ')', sep = '')))
+    print(paste('new mean of', i, ': ', mn), sep = '')
+  std <- eval(parse(text = paste('sd(auto$', i, ')', sep = '')))
+    print(paste('new sd of', i, ': ', std), sep = '')
+}
+```
+
+## e. Graphical Exploration
+
+```{r 9-e-pairs}
+pairs(auto[,1:8])
+```
+
+**`origin` vs `displacement` vs `weight`**
+
+```{r 9-e-i}
+ggplot(data = auto, mapping = aes(x = weight, y = displacement, color = origin)) + 
+  geom_point()
+```
+
+
+It is expected that weight and displacement (size of engine) are positively correlated, as a larger engine typically are needed for larger cars. The heaviest cars and those with the largest engines are largely American (`origin = 1`). The smallest cars in both weight and displacement are mostly Japanese (`origin = 3`) and European (`origin = 2`).
+
+**`acceleration` vs `year`**
+
+```{r 9-e-ii}
+ggplot(data = auto, mapping = aes(x = year, y = acceleration)) + 
+  geom_point() + 
+  geom_smooth()
+```
+
+
+There appears to be a slight overall increase in acceleration in cars on average over time, but there is large variation in acceleration between cars each year. Positive outliers are stronger than negative outliers as high-end cars on the can accelerate much more quickly than the standard.
+
+
+**`mpg` vs `displacement`**
+
+```{r 9-3-iii}
+ggplot(data = auto, mapping = aes(x = displacement, y = mpg)) + 
+  geom_point() + 
+  geom_smooth()
+```
+miles per gallon
+
+Fuel economy and engine size appear to have a non-linear negative relationship. After an engine size of 400 cubic inches, a convergent fuel economy of about 14 mpg is reached.
+
+
+## f. Predicting MPG Based on Other Variables: Which Ones?
+
+```{r 9-f}
+for (i in colnames(auto_manip[, 2:7]))
+{
+  fit <- eval(parse(text = paste('lm(mpg ~ ', i, ', data = auto)', sep = '')))
+  summ <- summary(fit)
+  cat(paste('formula:', c(summ$call$formula), '\n\t coefficient: ', summ$coefficients[2], '\n\t adjusted r-squared: ', summ$adj.r.squared), '\n', sep = '')
+}
+```
+
+The variable with the strongest linear correlation with `mpg` is `weight`, with an adjusted R-squared value of 0.692. The second-strongest variable correlation is `displacement`, with an adjusted R-squared value of 0.647. This is logical because `displacement` and `weight` both refer to a car's mass - as a car becomes heavier, more force (and more gas) is needed to move the car a similar distance to a lighter car. This corresponds to a lesser `mpg` value, as seen as a negative coefficient.
