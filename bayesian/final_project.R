@@ -1,0 +1,286 @@
+# setup
+pacman::p_load(baseballDBR, Lahman, rethinking, tidyverse)
+set_cmdstan_path("C:\\Users\\radma\\Downloads\\cmdstan-2.33.1")
+data("Batting")
+data("Fielding")
+
+# data partitioning
+DH_List <- Appearances %>%
+  filter(G_dh/G_all >= 0.5, G_all >= 30, 
+         yearID >= 1956, yearID < 1981)
+DH_Batting <- merge(Batting, DH_List, by = c("playerID", "yearID")) %>%
+  drop_na()
+DH_Batting$SLG <- SLG(DH_Batting)
+DH_Batting$OBP <- OBP(DH_Batting)
+DH_Batting$DH <- 2
+
+no_DH_List <- Appearances %>%
+  filter(G_dh/G_all == 0, G_all >= 30, 
+         yearID >= 1956, yearID < 1981)
+no_DH_Batting <- merge(Batting, no_DH_List, by = c("playerID", "yearID")) %>%
+  drop_na()
+no_DH_Batting$SLG <- SLG(no_DH_Batting)
+no_DH_Batting$OBP <- OBP(no_DH_Batting)
+no_DH_Batting$DH <- 1
+
+batstats <- rbind(DH_Batting, no_DH_Batting) %>%
+  drop_na()
+
+
+# plot of OBP: DH vs no DH
+ggplot() + 
+  geom_density(aes(DH_Batting$OBP), color = "red") + 
+  geom_density(aes(no_DH_Batting$OBP), color = "blue")
+
+
+# fivenum: DH vs no DH
+table(batstats$DH)
+print("Non-DH:")
+fivenum(batstats$OBP[batstats$DH == 1])
+sd(batstats$OBP[batstats$DH == 1])
+print("DH:")
+fivenum(batstats$OBP[batstats$DH == 2])
+sd(batstats$OBP[batstats$DH == 2])
+
+
+
+# adding dummy variables: pre-post DH era, 
+batstats$DHera <- rep(1, nrow(batstats))
+for (i in 1:nrow(batstats))
+{
+  if (batstats$yearID[i] >= 1973)
+    batstats$DHera[i] = 2
+}
+
+
+
+# plot of OBP: DHera vs noDHera
+ggplot() + 
+  geom_density(aes(batstats$OBP[batstats$DHera == 1]), color = "blue") + 
+  geom_density(aes(batstats$OBP[batstats$DHera == 2]), color = "red")
+
+# plot of HR/G: DHera vs noDHera
+ggplot() + 
+  geom_density(aes(batstats$HR[batstats$DH == 1]/batstats$G[batstats$DH == 1]), color = "blue") + 
+  geom_density(aes(batstats$HR[batstats$DH == 2]/batstats$G[batstats$DH == 2]), color = "red")
+
+
+
+
+  
+table(batstats$DH)
+print("Non-DH:")
+fivenum(batstats$HR[batstats$DH == 1]/batstats$G[batstats$DH == 1])
+sd(batstats$HR[batstats$DH == 1])
+print("DH:")
+fivenum(batstats$HR[batstats$DH == 2]/batstats$G[batstats$DH == 2])
+sd(batstats$HR[batstats$DH == 2])
+  
+
+
+# Regression
+
+precis(batstats)
+  
+
+  
+per_AB <- function(x)
+{
+  list <- c()
+  for (i in 1:length(x))
+  {list <- c(list, x[i]/batstats$AB[i])}
+  return(list)
+}
+
+
+batstats$H_perAB <- per_AB(batstats$H)
+batstats$R_perAB <- per_AB(batstats$R)
+batstats$X2B_perAB <- per_AB(batstats$X2B)
+batstats$X3B_perAB <- per_AB(batstats$X3B)
+batstats$HR_perAB <- per_AB(batstats$HR)
+batstats$RBI_perAB <- per_AB(batstats$RBI)
+batstats$BB_perAB <- per_AB(batstats$BB)
+batstats$SO_perAB <- per_AB(batstats$SO)
+batstats$IBB_perAB <- per_AB(batstats$IBB)
+
+
+dat <- batstats %>%
+  select(DH,
+         yearID,
+         DHera,
+         lgID.x,
+         stint,
+         G,
+         AB,
+         SLG,
+         OBP,
+         H_perAB,
+         R_perAB,
+         X2B_perAB,
+         X3B_perAB,
+         HR_perAB,
+         RBI_perAB,
+         BB_perAB,
+         SO_perAB,
+         IBB_perAB)
+
+dat <- dat %>% rename(lgID = lgID.x)
+
+# rm(old_AL, old_NL, Fielding, battingLabels, Batting, DH_Batting, no_DH_Batting, cat, vars, i, list, c, batstatsH, per_game)
+
+  
+
+# What to search to get to right chapter:
+# Interpreting these parameters is easy enough—they are the expected heights in each category
+
+  
+precis(dat)
+  
+
+  
+hist(dat$HR_perAB)
+ggplot() + 
+  geom_density(aes(dat$HR_perAB[dat$DH == 1]), color = "blue") + 
+  geom_density(aes(dat$HR_perAB[dat$DH == 2]), color = "red") + 
+  geom_density(aes(dat$HR_perAB), color = "black")
+hist(dat$OBP)
+
+# turn DH into dummy variable (0 and 1)
+dat$DH_dummy <- dat$DH - 1
+dat$OBP_std <- standardize(dat$OBP)
+
+# linear model
+obp_lin_mod <- quap(
+  alist(
+    OBP_std ~ dnorm(mu, sigma),
+    mu <- a + bDH*DH_dummy,
+    a ~ dnorm(-0.05, 0.5),
+    bDH ~ dnorm(0.5, 0.5),
+    sigma ~ dexp(1)), 
+  data = dat)
+
+# linear results
+labels <- paste("a[" , 1:2 , "]:", levels(dat$DH), sep = "")
+plot(precis(obp_lin_mod, depth = 2 , pars = "a"), labels = labels,
+     xlab = "expected OBP (std)")
+precis(obp_lin_mod, depth = 2)
+
+# linear posterior
+post <- extract.samples(obp_lin_mod)
+precis(post, depth = 2)
+  
+
+  
+xseq <- seq( from=min(dat$DH_dummy)-0.15 , to=max(dat$DH_dummy+0.15 , length.out=30 ))
+mu <- link(obp_lin_mod, data=list(DH_dummy=xseq))
+mu_mean <- apply(mu,2,mean)
+mu_PI <- apply(mu,2,PI)
+
+
+plot( OBP_std ~ DH_dummy , data=dat )
+lines( xseq , mu_mean , lwd=2 )
+shade( mu_PI , xseq )
+
+# quap model  
+obp_quap <- quap(
+  alist(
+    OBP_std ~ dnorm(mu, sigma),
+    mu <- a[DH],
+    a[DH] ~ dnorm(0, 2),
+    sigma ~ dexp(1)), 
+  data = dat)
+
+# quap results
+labels <- paste("a[" , 1:2 , "]:", levels(dat$DH), sep = "")
+plot(precis(obp_quap, depth = 2 , pars = "a"), labels = labels,
+     xlab = "expected OBP (std)")
+precis(obp_quap, depth = 2)
+
+# min(dat$OBP_std)
+# max(dat$OBP_std)
+
+# quap posterior
+post <- extract.samples(obp_mod)
+post$diff_fm <- post$a[,2] - post$a[,1]
+precis(post, depth = 2)
+
+
+# ulam model
+mod_ulam <- ulam(alist(
+OBP_std ~ dnorm(mu, sigma),
+    mu <- a + bDH*DH_dummy,
+    a ~ dnorm(-0.05, 0.5),
+    bDH ~ dnorm(0.5, 0.5),
+    sigma ~ dexp(1)), 
+  data = dat, chains = 4,
+start = list(a = 0.2, bdh = 0.3, sigma = 0.1))
+
+# ulam results
+precis(mod_ulam, depth = 2)
+plot(mod_ulam, depth = 2)
+  
+
+
+## Additional Code
+
+noDH_AL_RPY <- noDH_AL_Batting %>% 
+  filter(lgID == "AL") %>%
+  group_by(yearID) %>%
+  summarise(R = sum(R))
+
+noDH_NL_RPY <- noDH_NL_Batting %>% 
+  filter(lgID == "NL") %>%
+  group_by(yearID) %>%
+  summarise(R = sum(R))
+
+DH_AL_RPY <- DH_AL_Batting %>% 
+  filter(lgID == "AL") %>%
+  group_by(yearID) %>%
+  summarise(R = sum(R))
+
+DH_NL_RPY <- DH_NL_Batting %>% 
+  filter(lgID == "NL") %>%
+  group_by(yearID) %>%
+  summarise(R = sum(R))
+
+old_AL_preDH <- Batting %>%
+  filter(lgID == "AL", yearID >= 1968, yearID < 1973) %>%
+  drop_na()
+old_AL_preDH$prepost <- rep(0, nrow(old_AL_preDH))
+old_AL_postDH <- Batting %>%
+  filter(lgID == "AL", yearID >= 1973, yearID < 1978) %>%
+  drop_na()
+old_AL_postDH$prepost <- rep(1, nrow(old_AL_postDH))
+old_AL <- rbind(old_AL_preDH, old_AL_postDH)
+rm(old_AL_preDH, old_AL_postDH)
+
+old_NL_preDH <- Batting %>%
+  filter(lgID == "NL", yearID >= 1968, yearID < 1973) %>%
+  drop_na()
+old_NL_preDH$prepost <- rep(0, nrow(old_NL_preDH))
+old_NL_postDH <- Batting %>%
+  filter(lgID == "NL", yearID >= 1973, yearID < 1978) %>%
+  drop_na()
+old_NL_postDH$prepost <- rep(1, nrow(old_NL_postDH))
+old_NL <- rbind(old_NL_preDH, old_NL_postDH)
+rm(old_NL_preDH, old_NL_postDH)
+
+dat$OBP_std <- standardize(dat$OBP)   
+obp_mod <- quap(   
+  alist(   
+    OBP_std ~ dnorm(mu, sigma),   
+    mu <- a[DH],   
+    a[DH] ~ dnorm(1, 2),   
+    sigma ~ dexp(1)),    
+  data = subset(dat, DHera == 2))    
+labels <- paste("a[" , 1:2 , "]:", levels(dat$DH), sep = "")   
+plot(precis(obp_mod, depth = 2 , pars = "a"), labels = labels,   
+     xlab = "expected OBP (std)")   
+ precis(obp_mod, depth = 2)   
+ post <- extract.samples(obp_mod)   
+post$diff_fm <- post$a[,2] - post$a[,1]   
+precis(post, depth = 2)   
+  
+
+
+
